@@ -1,0 +1,129 @@
+---
+title: "Practical machine learning assignment"
+output: html_document
+---
+
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## model and testing [1]
+Our outcome variable is classe, a factor variable with 5 levels. For this data set, “participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions:
+
+- exactly according to the specification (Class A)
+- throwing the elbows to the front (Class B)
+- lifting the dumbbell only halfway (Class C)
+- lowering the dumbbell only halfway (Class D)
+- throwing the hips to the front (Class E)
+
+Two methods are tested (random forest and regression tree) to model the data
+
+## Cross-validation
+
+Cross-validation is done via subsampling the training data set into two groups, training (75%) and validation (25%).
+
+## Expected out-of-sample error
+The expected out-of-sample will be calculated to see how well the model fits
+
+
+# Getting and cleaning the data
+
+## Loading the needed libaries
+
+```{r}
+library(ggplot2)
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(e1071)
+library(gbm)
+set.seed(22133)
+```
+
+Reading the data
+```{r}
+trainingdata <- read.csv(file="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", header=TRUE, sep=",", na.string = c("NA", "#DIV/0!"))
+testdata <- read.csv(file="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", header=TRUE, sep=",", na.string = c("NA", "#DIV/0!"))
+```
+
+cleaning non related information:
+
+Removing columns which are not contributing to the prediction on both test and training data: 
+user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, and  num_window
+
+```{r}
+trainingdata <- trainingdata[, -(1:6)]
+testdata <- testdata[,-(1:6)]
+```
+
+Removing the samples without any data (NA or #DIV/0!). This is needed as they are many of them. Despite r is not including them in the prediction it would be good to remove them as they are class of missingness at random [2]
+```{r, echo=FALSE}
+trainingdata <-trainingdata[,colSums(is.na(trainingdata)) == 0]
+testdata <-testdata[,colSums(is.na(testdata)) == 0]
+```
+
+Partitioning for validation based on the class to estimate the out-of-sample error
+```{r}
+inTrain = createDataPartition(trainingdata$class, p = 3/4)[[1]]
+training = trainingdata[ inTrain,]
+validation = trainingdata[-inTrain,]
+```
+
+checking the data based on the 5 classes to see if the amount of samples is more or less the same in order to see if biasining can be expected
+
+```{r, echo=FALSE}
+ggplot(training, aes(classe)) + geom_histogram(aes(x=classe))
+```
+
+From the graph can be seen that the classes are more or less in the same order and no bian can be expected. Class A has the most amount of occurances (around 4100) and class D the least (around 2400)
+
+# modeling the data
+
+Three models are used
+1) random forest
+2) regression tree
+3) boosting
+
+```{r}
+model1 <- randomForest(classe ~ ., data=training, method="class")
+model2 <- rpart(classe ~ ., data=training, method="class")
+```
+
+
+# predicting the data on the validation
+```{r}
+prediction1_valid <- predict(model1, validation, type = "class")
+prediction2_valid <- predict(model2, validation, type = "class")
+```
+
+Checking the outcome of the prediction via the confusion matrix 
+```{r}
+confusionMatrix(prediction1_valid, validation$classe)
+confusionMatrix(prediction2_valid, validation$classe)
+```
+
+Model random forest is the best and will be used for the testing data
+```{r}
+predictfinal <- predict(model1, testdata, type="class")
+predictfinal
+```
+
+# out of sample error and cross validtion
+From the chosen model the out of sample error can be calculated. The out of sample error or cross validtion is to test the accuracy of the model
+```{r}
+ModelAccuracy <- postResample(validation$classe, prediction1_valid)
+ModelAccuracy_valid <- ModelAccuracy[[1]]
+ModelAccuracy_valid
+```
+The model accuracy is 99.7% and the out of sample error is 1 - ModelAccuracy
+```{r}
+OutOfSample <-  1 -  ModelAccuracy[[1]]
+OutOfSample
+```
+The out of sample error is 0.3%
+
+# References
+[1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human ’13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+[2] http://www.stat.columbia.edu/~gelman/arm/missing.pdf
